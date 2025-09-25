@@ -250,27 +250,19 @@ def backtest(
         # =========================== 仓位变动计算 ===========================
         ## 步骤1：计算持仓变动量（目标持仓 - 历史持仓）
         # fill_value=0 确保新增股票（历史持仓为空）和清仓股票（目标持仓为空）都能正确计算
-        holdings_change_raw = target_holdings.sub(
-            previous_holdings, fill_value=0
-        )  # 计算原始持仓变动量
+        holdings_change_raw = target_holdings.sub(previous_holdings, fill_value=0)
 
-        ## 步骤2：过滤掉无变动的股票（变动量为0的股票）
-        # 将变动量为0的股票标记为NaN，然后删除，只保留需要调仓的股票
+        ## 步骤2：过滤掉无变动的股票（变动量为0的股票,用np.nan代替）
         holdings_change_filtered = holdings_change_raw.replace(0, np.nan)
 
-        ## 步骤3：获取最终的交易执行列表
-        # 正数表示需要买入的股数，负数表示需要卖出的股数
-        # 删除NaN，只保留需要执行的交易
+        ## 步骤3：删除NaN,获取最终的交易执行列表
         trades_to_execute = holdings_change_filtered.dropna()
 
         # 获取当前调仓日的所有股票未复权价格
         current_prices = unadjusted_prices.loc[rebalance_date]
 
         # =========================== 计算交易成本 ===========================
-        # 计算总交易成本：交易金额 = 价格 * 交易股数
-        # 计算每笔交易的交易金额
-        # 对每笔交易计算手续费
-        # 求和得到总手续费
+        # 计算总交易成本：交易金额 = 价格 * 交易股数，根据交易金额计算手续费
         total_transaction_cost = (
             (current_prices * trades_to_execute)
             .apply(
@@ -295,8 +287,11 @@ def backtest(
 
         # =========================== 计算投资组合市值 ===========================
         # 投资组合市值 = 每只股票的(模拟未复权价格 * 持仓数量)的总和
-        # 按日计算投资组合市值
-        portfolio_market_value = (simulated_prices * target_holdings).sum(axis=1)
+        # 处理价格缺失的情况：当价格为NaN时，使用前一日价格填充
+        simulated_prices_filled = simulated_prices.ffill()
+
+        # 按日计算投资组合市值（忽略NaN值）
+        portfolio_market_value = (simulated_prices_filled * target_holdings).sum(axis=1)
 
         # =========================== 计算现金账户余额 ===========================
         # 初始现金余额 = 可用资金 - 交易成本 - 初始投资金额
@@ -369,15 +364,15 @@ def backtest(
     # 夏普
     strategy_sharpe = (strategy_annualized_return - rf) / strategy_volatility
 
-    result = {
-        "策略累计收益": round(strategy_final_return, 4),
-        "策略年化收益": round(strategy_annualized_return, 4),
-        "夏普比率": round(strategy_sharpe, 4),
-    }
+    result = pd.DataFrame(
+        {
+            "策略累计收益": [round(strategy_final_return, 4)],
+            "策略年化收益": [round(strategy_annualized_return, 4)],
+            "夏普比率": [round(strategy_sharpe, 4)],
+        }
+    )
 
-    output = pd.DataFrame([result])
-
-    return output
+    return result
 
 
 def get_benchmark(df, benchmark, benchmark_type="mcw"):

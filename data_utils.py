@@ -75,14 +75,8 @@ def optimize_ic_report(combined_ic_report):
         optimized_report.loc[negative_ic_mask, "ICIR"]
     )
 
-    # 添加方向标识列，标明因子使用方向
-    optimized_report["direction"] = "正向"
-    optimized_report.loc[negative_ic_mask, "direction"] = "反向"
-
-    # 按优化后的IC_mean降序排序
-    optimized_report = optimized_report.sort_values("IC_mean", ascending=False)
-
-    print(f"转换了 {negative_ic_mask.sum()} 个负IC因子为正值")
+    # 按优化后的策略年化收益降序排序
+    optimized_report = optimized_report.sort_values("策略年化收益", ascending=False)
 
     return optimized_report
 

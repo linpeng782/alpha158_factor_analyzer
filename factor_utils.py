@@ -31,7 +31,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def filter_by_market_cap(raw_factor, save_dir, top_n=1000):
+def filter_by_market_cap(raw_factor, cache_dir, top_n=1000):
 
     print("过滤市值...")
     stock_list = raw_factor.columns.tolist()
@@ -40,7 +40,7 @@ def filter_by_market_cap(raw_factor, save_dir, top_n=1000):
 
     # 对每个交易日，从有因子值的股票中选出市值最大的前top_n只
     try:
-        market_cap_mask = pd.read_pickle(f"{save_dir}/market_cap_mask.pkl")
+        market_cap_mask = pd.read_pickle(f"{cache_dir}/market_cap_mask.pkl")
         print("✅ 成功加载缓存的market_cap_mask")
     except:
         print("✅ 计算新的market_cap_mask...")
@@ -62,8 +62,8 @@ def filter_by_market_cap(raw_factor, save_dir, top_n=1000):
         # 将所有mask合并成DataFrame
         market_cap_mask = pd.DataFrame(market_cap_mask_list, index=raw_factor.index)
 
-        os.makedirs(save_dir, exist_ok=True)
-        market_cap_mask.to_pickle(f"{save_dir}/market_cap_mask.pkl")
+        os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+        market_cap_mask.to_pickle(f"{cache_dir}/market_cap_mask.pkl")
 
     # 应用市值过滤
     factor = raw_factor.mask(~market_cap_mask)
@@ -100,14 +100,14 @@ def create_market_cap_mask(factor_row, market_cap_row, top_n=1000):
     return mask
 
 
-def preprocess_raw(raw_factor, stock_universe, save_dir):
+def preprocess_raw(raw_factor, stock_universe, cache_dir):
 
     print("过滤新股、ST、停牌、涨停...")
     stock_list = stock_universe.columns.tolist()
     date_list = stock_universe.index.tolist()
 
     try:
-        combo_mask = pd.read_pickle(f"{save_dir}/combo_mask.pkl")
+        combo_mask = pd.read_pickle(f"{cache_dir}/combo_mask.pkl")
         print("✅ 成功加载缓存的combo_mask")
     except:
         print("✅ 计算新的combo_mask...")
@@ -129,8 +129,8 @@ def preprocess_raw(raw_factor, stock_universe, save_dir):
             + (~stock_universe).astype(int)
         ) == 0
 
-        os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-        combo_mask.to_pickle(f"{save_dir}/combo_mask.pkl")
+        os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+        combo_mask.to_pickle(f"{cache_dir}/combo_mask.pkl")
 
     factor = raw_factor.mask(~combo_mask)
 
@@ -162,22 +162,23 @@ def INDEX_FIX(start_date, end_date, index_item):
     return index_fix
 
 
-def get_stock_universe(start_date, end_date, index_item, save_dir):
+def get_stock_universe(start_date, end_date, index_item, cache_dir):
     """
     :param start_date: 开始日 -> str
     :param end_date: 结束日 -> str
     :param index_item: 指数代码 -> str
+    :param cache_dir: 缓存目录 -> str
     :return stock_universe: 动态券池 -> unstack
     """
 
     try:
-        stock_universe = pd.read_pickle(f"{save_dir}/stock_universe.pkl")
+        stock_universe = pd.read_pickle(f"{cache_dir}/stock_universe.pkl")
         print("✅ 成功加载缓存的stock_universe")
     except:
         print("✅ 计算新的stock_universe...")
         stock_universe = INDEX_FIX(start_date, end_date, index_item)
-        os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-        stock_universe.to_pickle(f"{save_dir}/stock_universe.pkl")
+        os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+        stock_universe.to_pickle(f"{cache_dir}/stock_universe.pkl")
 
     return stock_universe
 
@@ -288,7 +289,7 @@ def get_limit_up_filter(stock_list, date_list):
 # 单因子检验
 def calculate_ic(
     df,
-    save_dir,
+    cache_dir,
     rebalance_days,
     Rank_IC=True,
     factor_name="",
@@ -301,7 +302,7 @@ def calculate_ic(
     :return: IC结果和报告
     """
 
-    vwap_df = pd.read_pickle(f"{save_dir}/vwap_df.pkl")
+    vwap_df = pd.read_pickle(f"{cache_dir}/vwap_df.pkl")
     post_vwap = vwap_df["post_vwap"].unstack("order_book_id")
 
     # 未来一段收益股票的累计收益率计算
