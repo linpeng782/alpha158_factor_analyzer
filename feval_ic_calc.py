@@ -1,12 +1,12 @@
 import pandas as pd
 import numpy as np
-from typing import Union, Optional
+import multiprocessing as mp
+from functools import partial
 import warnings
 import sys
 import os
-import multiprocessing as mp
-from functools import partial
 
+# 过滤警告信息
 warnings.filterwarnings("ignore")
 
 # 添加父目录到Python路径
@@ -121,15 +121,23 @@ def batch_factor_analysis(
 
     # 使用上下文管理器确保资源正确释放
     results = []
-    with mp.Pool(processes=n_processes) as pool:
-        # 并行处理所有因子，使用imap获取实时进度
-        for i, result in enumerate(pool.imap(process_func, factor_files), 1):
-            results.append(result)
-            factor_name = factor_files[i - 1].split("/")[-1].split("_")[1]
-            if result is not None:
-                print(f"进度: [{i}/{len(factor_files)}] 因子 {factor_name} 完成")
-            else:
-                print(f"进度: [{i}/{len(factor_files)}] 因子 {factor_name} 失败")
+    try:
+        with mp.Pool(processes=n_processes) as pool:
+            # 并行处理所有因子，使用imap获取实时进度
+            for i, result in enumerate(pool.imap(process_func, factor_files), 1):
+                results.append(result)
+                factor_name = factor_files[i - 1].split("/")[-1].split("_")[1]
+                if result is not None:
+                    print(f"进度: [{i}/{len(factor_files)}] 因子 {factor_name} 完成")
+                else:
+                    print(f"进度: [{i}/{len(factor_files)}] 因子 {factor_name} 失败")
+
+            # 显式关闭和等待所有进程完成
+            pool.close()
+            pool.join()
+    except Exception as e:
+        print(f"多进程处理出错: {e}")
+        return None
 
     # 过滤掉失败的结果
     all_factor_results = [result for result in results if result is not None]
@@ -173,26 +181,22 @@ if __name__ == "__main__":
     end_date = "2025-07-01"
     index_item = "000985.XSHG"
 
-    # 数据目录: 因子数据存储目录
-    data_dir = "/Users/didi/DATA/alpha158/large_factors"
-    # 缓存目录: 用于存储中间结果
-    cache_dir = "/Users/didi/DATA/alpha158/cache"
-    # 保存目录: 用于保存最终结果
-    save_dir = "/Users/didi/DATA/alpha158/factor_results"
+    BASE_PATH = "/Users/didi/DATA/alpha158"
+    data_dir = os.path.join(BASE_PATH, "large_factors")  # 因子数据目录
+    cache_dir = os.path.join(BASE_PATH, "cache")  # 缓存目录
+    save_dir = os.path.join(BASE_PATH, "factor_results")  # 结果保存目录
 
     print("获取股票池...")
     stock_universe = get_stock_universe(start_date, end_date, index_item, cache_dir)
 
     # 选择运行模式
-    mode = "single"  # 可选: "single" 或 "batch"
+    mode = "batch"  # 可选: "single" 或 "batch"
 
     if mode == "single":
         # 单因子测试示例
         print("=== 单因子测试模式 ===")
-        factor_dir = "/Users/didi/DATA/alpha158/large_factors/factor_MA60_20250923.csv"
-        result = process_single_factor(
-            factor_dir, stock_universe, cache_dir
-        )  # 测试BETA10因子
+        factor_file = os.path.join(data_dir, "factor_MA60_20250923.csv")
+        result = process_single_factor(factor_file, stock_universe, cache_dir)
         print("\n测试结果:")
         print(result)
 
