@@ -38,23 +38,18 @@ def filter_by_market_cap(raw_factor, save_dir, top_n=1000):
     start_date = raw_factor.index.min()
     end_date = raw_factor.index.max()
 
-    try:
-        market_cap = pd.read_pickle(f"{save_dir}/market_cap.pkl")
-        print("✅ 成功加载缓存的market_cap")
-    except:
-        print("✅ 计算新的market_cap...")
-        market_cap = execute_factor(
-            Factor("market_cap_3"), stock_list, start_date, end_date
-        )
-        os.makedirs(save_dir, exist_ok=True)
-        market_cap.to_pickle(f"{save_dir}/market_cap.pkl")
-
     # 对每个交易日，从有因子值的股票中选出市值最大的前top_n只
     try:
         market_cap_mask = pd.read_pickle(f"{save_dir}/market_cap_mask.pkl")
         print("✅ 成功加载缓存的market_cap_mask")
     except:
         print("✅ 计算新的market_cap_mask...")
+
+        # 获取市值因子
+        market_cap = execute_factor(
+            Factor("market_cap_3"), stock_list, start_date, end_date
+        )
+
         market_cap_mask_list = []
 
         for date in raw_factor.index:
@@ -167,6 +162,26 @@ def INDEX_FIX(start_date, end_date, index_item):
     return index_fix
 
 
+def get_stock_universe(start_date, end_date, index_item, save_dir):
+    """
+    :param start_date: 开始日 -> str
+    :param end_date: 结束日 -> str
+    :param index_item: 指数代码 -> str
+    :return stock_universe: 动态券池 -> unstack
+    """
+
+    try:
+        stock_universe = pd.read_pickle(f"{save_dir}/stock_universe.pkl")
+        print("✅ 成功加载缓存的stock_universe")
+    except:
+        print("✅ 计算新的stock_universe...")
+        stock_universe = INDEX_FIX(start_date, end_date, index_item)
+        os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+        stock_universe.to_pickle(f"{save_dir}/stock_universe.pkl")
+
+    return stock_universe
+
+
 # 新股过滤
 def get_new_stock_filter(stock_list, datetime_period, newly_listed_threshold=252):
     """
@@ -271,7 +286,7 @@ def get_limit_up_filter(stock_list, date_list):
 
 
 # 单因子检验
-def calc_ic(
+def calculate_ic(
     df,
     save_dir,
     rebalance_days,
@@ -285,34 +300,9 @@ def calc_ic(
     :param Rank_IC: 是否使用排名IC
     :return: IC结果和报告
     """
-    # 基础数据获取
-    order_book_ids = df.columns.tolist()
-    date_list = df.index
-    start = date_list.min().strftime("%F")
-    end = date_list.max().strftime("%F")
 
-    try:
-        daily_tech = pd.read_pickle(f"{save_dir}/daily_tech.pkl")
-        print("✅ 成功加载缓存的daily_tech")
-    except:
-        print("✅ 计算新的daily_tech...")
-        # 获取技术指标数据：成交额和成交量
-        tech_list = ["total_turnover", "volume"]
-        daily_tech = get_price(
-            order_book_ids,
-            start_date=start,
-            end_date=end,
-            fields=tech_list,
-            adjust_type="post_volume",
-            skip_suspended=False,
-        ).sort_index()
-
-        os.makedirs(save_dir, exist_ok=True)
-        daily_tech.to_pickle(f"{save_dir}/daily_tech.pkl")
-
-    # 计算后复权VWAP（成交额/后复权调整后的成交量）
-    post_vwap = daily_tech["total_turnover"] / daily_tech["volume"]
-    post_vwap = post_vwap.unstack("order_book_id")
+    vwap_df = pd.read_pickle(f"{save_dir}/vwap_df.pkl")
+    post_vwap = vwap_df["post_vwap"].unstack("order_book_id")
 
     # 未来一段收益股票的累计收益率计算
     future_returns = post_vwap.pct_change(rebalance_days).shift(-rebalance_days - 1)
@@ -330,22 +320,27 @@ def calc_ic(
     # t检验 单样本
     t_stat, _ = stats.ttest_1samp(ic_values, 0)
 
+    # 计算IC方向：根据IC均值的正负确定因子方向
+    ic_mean = ic_values.mean()
+    ic_direction = 1 if ic_mean >= 0 else -1
+
     # 因子报告
     ic_report = {
         "factor_name": factor_name,
         "rebalance_days": rebalance_days,
-        "IC_mean": round(ic_values.mean(), 4),
+        "IC_mean": round(ic_mean, 4),
         "IC_std": round(ic_values.std(), 4),
-        "ICIR": round(ic_values.mean() / ic_values.std(), 4),
+        "ICIR": round(ic_mean / ic_values.std(), 4),
         "IC_>0": round(len(ic_values[ic_values > 0].dropna()) / len(ic_values), 4),
         "ABS_IC_>2%": round(
             len(ic_values[abs(ic_values) > 0.02].dropna()) / len(ic_values), 4
         ),
         "t_statistic": round(t_stat, 4),
+        "ic_direction": ic_direction,
     }
 
     # 转换为DataFrame格式
     ic_report_df = pd.DataFrame([ic_report]).set_index("factor_name")
     print(ic_report_df)
 
-    return ic_values, ic_report_df
+    return ic_report_df, ic_direction

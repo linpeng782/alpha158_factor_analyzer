@@ -1,11 +1,93 @@
 import pandas as pd
+import os
+from factor_utils import get_price, get_vwap
 
 
-def check_raw_factor(data_dir):
-    raw_factor = pd.read_csv(data_dir)
-    raw_factor.set_index("date", inplace=True)
-    raw_factor.index = pd.to_datetime(raw_factor.index)
-    raw_factor.index.names = ["datetime"]
+def get_vwap_data(factor_df, save_dir: str) -> pd.DataFrame:
+
+    try:
+        vwap_df = pd.read_pickle(f"{save_dir}/vwap_df.pkl")
+        print("✅ 成功加载缓存的vwap_df")
+        return vwap_df
+
+    except:
+
+        # 获取技术指标数据：成交额和成交量
+        print("✅ 计算新的vwap_df...")
+        stock_list = factor_df.columns.tolist()
+        start_date = factor_df.index.min()
+        end_date = factor_df.index.max()
+
+        tech_list = ["total_turnover", "volume"]
+        daily_tech = get_price(
+            stock_list,
+            start_date,
+            end_date,
+            fields=tech_list,
+            adjust_type="post_volume",
+            skip_suspended=False,
+        ).sort_index()
+
+        # 计算后复权VWAP（成交额/后复权调整后的成交量）
+        post_vwap = daily_tech["total_turnover"] / daily_tech["volume"]
+
+        # 获取未复权VWAP价格数据
+        unadjusted_vwap = get_vwap(stock_list, start_date, end_date)
+
+        # 转换为DataFrame并添加后复权VWAP
+        vwap_df = pd.DataFrame(
+            {"unadjusted_vwap": unadjusted_vwap, "post_vwap": post_vwap}
+        )
+
+        # 统一索引名称
+        vwap_df.index.names = ["order_book_id", "datetime"]
+
+        # 保存数据以备下次使用
+        os.makedirs(save_dir, exist_ok=True)
+        vwap_df.to_pickle(f"{save_dir}/vwap_df.pkl")
+
+        return vwap_df
+
+
+def optimize_ic_report(combined_ic_report):
+    """
+    优化IC报告：将负IC转换为正值，添加方向标识，并按IC降序排序
+
+    Args:
+        combined_ic_report: 合并后的IC报告DataFrame
+
+    Returns:
+        优化后的IC报告DataFrame
+    """
+    print("优化IC报告：将负IC转换为正值...")
+
+    # 创建副本避免修改原数据
+    optimized_report = combined_ic_report.copy()
+
+    # 识别负IC的行
+    negative_ic_mask = optimized_report["IC_mean"] < 0
+
+    # 对负IC的行进行转换
+    optimized_report.loc[negative_ic_mask, "IC_mean"] = abs(
+        optimized_report.loc[negative_ic_mask, "IC_mean"]
+    )
+    optimized_report.loc[negative_ic_mask, "ICIR"] = abs(
+        optimized_report.loc[negative_ic_mask, "ICIR"]
+    )
+
+    # 添加方向标识列，标明因子使用方向
+    optimized_report["direction"] = "正向"
+    optimized_report.loc[negative_ic_mask, "direction"] = "反向"
+
+    # 按优化后的IC_mean降序排序
+    optimized_report = optimized_report.sort_values("IC_mean", ascending=False)
+
+    print(f"转换了 {negative_ic_mask.sum()} 个负IC因子为正值")
+
+    return optimized_report
+
+
+def check_raw_factor(raw_factor):
 
     print("原始因子数据前5行:")
     print(raw_factor.head())
@@ -38,20 +120,16 @@ def check_raw_factor(data_dir):
 
 def align_raw_factor(data_dir, stock_universe):
 
-    raw_factor = check_raw_factor(data_dir)
+    raw_factor = pd.read_csv(data_dir)
+    raw_factor.set_index("date", inplace=True)
+    raw_factor.index = pd.to_datetime(raw_factor.index)
+    raw_factor.index.names = ["datetime"]
 
-    # 时间戳对齐：取两者的交集
-    print("\n开始时间戳对齐...")
+    # raw_factor = check_raw_factor(raw_factor)
 
-    # 进一步对齐：只保留两者都有的具体日期
+    # 对齐：只保留两者都有的具体日期
     common_dates = raw_factor.index.intersection(stock_universe.index)
     aligned_factor = raw_factor.loc[common_dates]
-
-    # 验证对齐结果
-    if aligned_factor.shape[0] == stock_universe.shape[0]:
-        print("✅ 时间戳对齐成功！")
-    else:
-        print("❌ 时间戳对齐失败，行数不匹配")
 
     return aligned_factor
 
