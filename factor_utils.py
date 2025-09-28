@@ -342,6 +342,8 @@ def calculate_ic(
 
     # 转换为DataFrame格式
     ic_report_df = pd.DataFrame([ic_report]).set_index("factor_name")
+    ic_values = pd.DataFrame(ic_values, columns=[factor_name])
+
     print(ic_report_df)
 
-    return ic_report_df, ic_direction
+    return ic_report_df, ic_direction, ic_values
