@@ -1,3 +1,92 @@
+import multiprocessing as mp
+import pandas as pd
+from functools import partial
+import numpy as np
+import os
+import glob as glob
+import time as time
+
+from factor_utils import *
+from data_utils import *
+from backtest import *
+
+
+def process_single_factor(
+    factor_file_path: str,
+    stock_universe: pd.DataFrame,
+    cache_dir: str,
+    save_dir: str,
+):
+    """
+    处理单个因子文件
+
+    Args:
+        factor_file_path: 因子文件路径
+        stock_universe: 股票池DataFrame
+        cache_dir: 缓存目录
+
+    Returns:
+        DataFrame: 包含IC指标和绩效指标的综合结果
+    """
+    # 从文件路径提取因子名称
+    factor_name = factor_file_path.split("/")[-1].split("_")[1]
+
+    print(f"\n{'='*60}")
+    print(f"开始处理因子: {factor_name}")
+    print(f"{'='*60}")
+
+    # 对齐原始因子数据和股票池
+    aligned_factor = align_raw_factor(factor_file_path, stock_universe)
+
+    # 预处理: 新股、ST、停牌、涨停、标准化
+    preprocessed_factor = preprocess_raw(aligned_factor, stock_universe, cache_dir)
+
+    # 用市值过滤因子，取每日截面市值前70%的股票
+    factor = filter_by_market_cap(preprocessed_factor, cache_dir)
+
+    # 保存因子数据
+    timestamp = datetime.now().strftime("%Y%m%d")
+    factor.to_csv(
+        os.path.join(save_dir, f"factor_{factor_name}_filtered_{timestamp}.csv")
+    )
+    print(
+        f"保存因子数据: {os.path.join(save_dir, f'{factor_name}_filtered_{timestamp}.csv')}"
+    )
+
+    # 获取VWAP数据
+    vwap_df = get_vwap_data(factor, cache_dir)
+
+    # 计算IC、ICIR、t检验
+    print("计算IC、ICIR、t检验...")
+    ic_report_df, ic_direction, ic_values = calculate_ic(
+        factor, vwap_df, rebalance_days=5, factor_name=factor_name
+    )
+
+    # 根据IC方向调整因子值
+    adjusted_factor = factor * ic_direction
+
+    # 生成买入队列及投资组合权重, rank_n = 100只股票
+    buy_list = get_buy_list(adjusted_factor, rank_n=100)
+    portfolio_weights = buy_list.div(buy_list.sum(axis=1), axis=0)
+    portfolio_weights = portfolio_weights.shift(1).dropna(how="all")
+
+    # 单因子回测
+    print("单因子回测...")
+    # 读取交易日历
+    trading_days_df = get_trading_days(stock_universe, cache_dir)
+
+    performance_result = backtest(portfolio_weights, vwap_df, rebalance_frequency=5)
+
+    # 合并IC报告和回测绩效结果
+    ic_report_reset = ic_report_df.reset_index()
+    combined_result = pd.concat(
+        [ic_report_reset, performance_result], axis=1
+    ).set_index("factor_name")
+
+    print(f"因子 {factor_name} 处理完成")
+    return combined_result, ic_values
+
+
 def batch_factor_analysis(
     data_dir, cache_dir, stock_universe, save_dir, n_processes=None
 ):
@@ -10,8 +99,6 @@ def batch_factor_analysis(
     :param save_dir: 缓存目录
     :param n_processes: 进程数量，默认为CPU核心数-1
     """
-    import glob
-    import time
 
     print(f"开始批量因子分析（多进程版本）...")
     print(f"数据目录: {data_dir}")

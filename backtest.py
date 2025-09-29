@@ -37,6 +37,34 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+def get_previous_trading_date_from_df(trading_days_df, target_date, n=1):
+    """
+    从trading_days DataFrame中获取指定日期前n个交易日
+
+    Args:
+        trading_days_df: 包含交易日期的DataFrame
+        target_date: 目标日期
+        n: 前推的交易日数量，默认为1
+
+    Returns:
+        前n个交易日的日期
+    """
+    # 转换目标日期为pandas Timestamp
+    target_date = pd.to_datetime(target_date)
+
+    # 获取交易日期列表并排序
+    trading_dates = pd.to_datetime(trading_days_df["datetime"]).sort_values()
+
+    # 找到严格小于目标日期的所有交易日
+    valid_dates = trading_dates[trading_dates < target_date]
+
+    if len(valid_dates) < n:
+        raise ValueError(f"在{target_date}之前没有足够的{n}个交易日")
+
+    # 返回前n个交易日
+    return valid_dates.iloc[-n]
+
+
 def get_buy_list(df, top_type="rank", rank_n=100, quantile_q=0.8):
     """
     :param df: 因子值 -> dataframe/unstack
