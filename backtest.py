@@ -2,14 +2,15 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import statsmodels.api as sm
-from rqdatac import *
-from rqfactor import *
-from rqfactor import Factor
-from rqfactor.extension import *
+
+# from rqdatac import *
+# from rqfactor import *
+# from rqfactor import Factor
+# from rqfactor.extension import *
 from datetime import datetime
 
-init("13522652015", "123456")
-import rqdatac
+# init("13522652015", "123456")
+# import rqdatac
 
 from tqdm import *
 
@@ -152,6 +153,7 @@ def get_stock_vwap(vwap_data, adjust):
 def backtest(
     portfolio_weights,
     vwap_df,
+    trading_days_df,
     rebalance_frequency=20,
     initial_capital=10000 * 10000,
     stamp_tax_rate=0.0005,
@@ -334,9 +336,13 @@ def backtest(
 
     # =========================== 添加初始日记录并排序 ===========================
     # 在第一个交易日之前添加初始资本记录
-    initial_date = pd.to_datetime(
-        get_previous_trading_date(account_history.index.min(), 1)
+    # initial_date = pd.to_datetime(
+    #     get_previous_trading_date(account_history.index.min(), 1)
+    # )
+    initial_date = get_previous_trading_date_from_df(
+        trading_days_df, account_history.index.min()
     )
+
     account_history.loc[initial_date] = [
         initial_capital,
         0,

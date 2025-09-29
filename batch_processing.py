@@ -46,9 +46,9 @@ def process_single_factor(
 
     # 保存因子数据
     timestamp = datetime.now().strftime("%Y%m%d")
-    factor.to_csv(
-        os.path.join(save_dir, f"factor_{factor_name}_filtered_{timestamp}.csv")
-    )
+    # factor.to_csv(
+    #     os.path.join(save_dir, f"factor_{factor_name}_filtered_{timestamp}.csv")
+    # )
     print(
         f"保存因子数据: {os.path.join(save_dir, f'{factor_name}_filtered_{timestamp}.csv')}"
     )
@@ -75,7 +75,9 @@ def process_single_factor(
     # 读取交易日历
     trading_days_df = get_trading_days(stock_universe, cache_dir)
 
-    performance_result = backtest(portfolio_weights, vwap_df, rebalance_frequency=5)
+    performance_result = backtest(
+        portfolio_weights, vwap_df, trading_days_df, rebalance_frequency=5
+    )
 
     # 合并IC报告和回测绩效结果
     ic_report_reset = ic_report_df.reset_index()
@@ -122,6 +124,7 @@ def batch_factor_analysis(
         process_single_factor,
         stock_universe=stock_universe,
         cache_dir=cache_dir,
+        save_dir=save_dir,
     )
 
     # 使用上下文管理器确保资源正确释放

@@ -30,12 +30,12 @@ if __name__ == "__main__":
     stock_universe = get_stock_universe(start_date, end_date, index_item, cache_dir)
 
     # 选择运行模式
-    mode = "single"  # 可选: "single" 或 "batch"
+    mode = "batch"  # 可选: "single" 或 "batch"
 
     if mode == "single":
         # 单因子测试示例
         print("=== 单因子测试模式 ===")
-        factor_file = os.path.join(data_dir, "factor_MA60_20250923.csv")
+        factor_file = os.path.join(data_dir, "factor_IMIN5_20250923.csv")
         result, ic_values = process_single_factor(
             factor_file, stock_universe, cache_dir, save_dir
         )
