@@ -31,6 +31,87 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+# 热力图
+def hot_corr(name, ic_df, chart_dir):
+    """
+    :param name: 因子名称 -> list
+    :param ic_df: ic序列表 -> dataframe
+    :return fig: 热力图 -> plt
+    """
+    # 计算相关系数矩阵
+    corr_matrix = ic_df[name].corr()
+    
+    # 动态调整图像大小，但设置合理的上下限
+    n_factors = len(name)
+    fig_size = max(12, min(30, n_factors * 0.3))  # 最小12，最大30
+    
+    plt.figure(figsize=(fig_size, fig_size))
+    
+    # 创建热力图，针对大量因子优化显示
+    if n_factors > 50:
+        # 因子数量多时，不显示数值标注，调整字体
+        ax = sns.heatmap(
+            corr_matrix, 
+            cmap="Blues",  # 红-黄-蓝色谱，更容易区分
+            center=0,  # 以0为中心
+            square=True,
+            linewidths=0.1,
+            cbar_kws={"shrink": 0.8},
+            xticklabels=True,
+            yticklabels=True,
+            annot=False  # 不显示数值标注
+        )
+        # 设置较小的字体
+        plt.xticks(fontsize=6, rotation=90)
+        plt.yticks(fontsize=6, rotation=0)
+    else:
+        # 因子数量少时，显示数值标注
+        ax = sns.heatmap(
+            corr_matrix,
+            cmap="Blues",
+            center=0,
+            square=True,
+            linewidths=0.5,
+            cbar_kws={"shrink": 0.8},
+            annot=True,
+            fmt='.2f',
+            annot_kws={'size': 8}
+        )
+        plt.xticks(fontsize=10, rotation=45)
+        plt.yticks(fontsize=10, rotation=0)
+    
+    plt.title("Alpha158 因子IC相关性热力图", fontsize=16, pad=20)
+    plt.tight_layout()
+    
+    # 确保目录存在
+    os.makedirs(chart_dir, exist_ok=True)
+    
+    # 保存高分辨率图片
+    save_path = f"{chart_dir}/Factors_IC_CORRELATION.png"
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()  # 关闭图形以释放内存
+    
+    print(f"✅ 因子IC热力图已保存到: {save_path}")
+    print(f"📊 相关系数统计: 最大={corr_matrix.max().max():.3f}, 最小={corr_matrix.min().min():.3f}")
+    
+    # 输出高相关性因子对（相关系数>0.8）
+    high_corr_pairs = []
+    for i in range(len(corr_matrix.columns)):
+        for j in range(i+1, len(corr_matrix.columns)):
+            corr_val = corr_matrix.iloc[i, j]
+            if abs(corr_val) > 0.8:
+                high_corr_pairs.append((corr_matrix.columns[i], corr_matrix.columns[j], corr_val))
+    
+    if high_corr_pairs:
+        print(f"⚠️  发现 {len(high_corr_pairs)} 对高相关因子 (|相关系数|>0.8):")
+        for factor1, factor2, corr_val in high_corr_pairs[:10]:  # 只显示前10对
+            print(f"   {factor1} - {factor2}: {corr_val:.3f}")
+        if len(high_corr_pairs) > 10:
+            print(f"   ... 还有 {len(high_corr_pairs)-10} 对")
+    else:
+        print("✅ 未发现高相关因子对 (|相关系数|>0.8)")
+
+
 def filter_by_market_cap(raw_factor, cache_dir, top_n=1000):
 
     print("过滤市值...")

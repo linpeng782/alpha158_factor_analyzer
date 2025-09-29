@@ -193,10 +193,10 @@ if __name__ == "__main__":
     end_date = "2025-07-01"
     index_item = "000985.XSHG"
 
-    BASE_PATH = "/Users/didi/DATA/alpha158"
-    cache_dir = os.path.join(BASE_PATH, "cache")  # 缓存目录
-    data_dir = os.path.join(BASE_PATH, "large_factors")  # 因子数据目录
-    save_dir = os.path.join(BASE_PATH, "factor_results")  # 结果保存目录
+    DATA_PATH = "/Users/didi/DATA/alpha158"
+    cache_dir = os.path.join(DATA_PATH, "cache")  # 缓存目录
+    data_dir = os.path.join(DATA_PATH, "aggregated_factors")  # 因子数据目录
+    save_dir = os.path.join(DATA_PATH, "factor_results")  # 结果保存目录
 
     print("获取股票池...")
     stock_universe = get_stock_universe(start_date, end_date, index_item, cache_dir)
