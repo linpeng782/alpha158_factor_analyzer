@@ -31,100 +31,27 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-# 热力图
-def hot_corr(name, ic_df, chart_dir):
-    """
-    :param name: 因子名称 -> list
-    :param ic_df: ic序列表 -> dataframe
-    :return fig: 热力图 -> plt
-    """
-    # 计算相关系数矩阵
-    corr_matrix = ic_df[name].corr()
-    
-    # 动态调整图像大小，但设置合理的上下限
-    n_factors = len(name)
-    fig_size = max(12, min(30, n_factors * 0.3))  # 最小12，最大30
-    
-    plt.figure(figsize=(fig_size, fig_size))
-    
-    # 创建热力图，针对大量因子优化显示
-    if n_factors > 50:
-        # 因子数量多时，不显示数值标注，调整字体
-        ax = sns.heatmap(
-            corr_matrix, 
-            cmap="Blues",  # 红-黄-蓝色谱，更容易区分
-            center=0,  # 以0为中心
-            square=True,
-            linewidths=0.1,
-            cbar_kws={"shrink": 0.8},
-            xticklabels=True,
-            yticklabels=True,
-            annot=False  # 不显示数值标注
-        )
-        # 设置较小的字体
-        plt.xticks(fontsize=6, rotation=90)
-        plt.yticks(fontsize=6, rotation=0)
-    else:
-        # 因子数量少时，显示数值标注
-        ax = sns.heatmap(
-            corr_matrix,
-            cmap="Blues",
-            center=0,
-            square=True,
-            linewidths=0.5,
-            cbar_kws={"shrink": 0.8},
-            annot=True,
-            fmt='.2f',
-            annot_kws={'size': 8}
-        )
-        plt.xticks(fontsize=10, rotation=45)
-        plt.yticks(fontsize=10, rotation=0)
-    
-    plt.title("Alpha158 因子IC相关性热力图", fontsize=16, pad=20)
-    plt.tight_layout()
-    
-    # 确保目录存在
-    os.makedirs(chart_dir, exist_ok=True)
-    
-    # 保存高分辨率图片
-    save_path = f"{chart_dir}/Factors_IC_CORRELATION.png"
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()  # 关闭图形以释放内存
-    
-    print(f"✅ 因子IC热力图已保存到: {save_path}")
-    print(f"📊 相关系数统计: 最大={corr_matrix.max().max():.3f}, 最小={corr_matrix.min().min():.3f}")
-    
-    # 输出高相关性因子对（相关系数>0.8）
-    high_corr_pairs = []
-    for i in range(len(corr_matrix.columns)):
-        for j in range(i+1, len(corr_matrix.columns)):
-            corr_val = corr_matrix.iloc[i, j]
-            if abs(corr_val) > 0.8:
-                high_corr_pairs.append((corr_matrix.columns[i], corr_matrix.columns[j], corr_val))
-    
-    if high_corr_pairs:
-        print(f"⚠️  发现 {len(high_corr_pairs)} 对高相关因子 (|相关系数|>0.8):")
-        for factor1, factor2, corr_val in high_corr_pairs[:10]:  # 只显示前10对
-            print(f"   {factor1} - {factor2}: {corr_val:.3f}")
-        if len(high_corr_pairs) > 10:
-            print(f"   ... 还有 {len(high_corr_pairs)-10} 对")
-    else:
-        print("✅ 未发现高相关因子对 (|相关系数|>0.8)")
+# 标准化处理
+def standardize(df):
+    df_standardize = df.sub(df.mean(axis=1), axis=0).div(df.std(axis=1), axis=0)
+    return df_standardize
 
 
-def filter_by_market_cap(raw_factor, cache_dir, top_n=1000):
+def filter_by_market_cap(preprocessed_factor, cache_dir, top_pct=0.7):
 
     print("过滤市值...")
-    stock_list = raw_factor.columns.tolist()
-    start_date = raw_factor.index.min()
-    end_date = raw_factor.index.max()
+    stock_list = preprocessed_factor.columns.tolist()
+    start_date = preprocessed_factor.index.min()
+    end_date = preprocessed_factor.index.max()
 
-    # 对每个交易日，从有因子值的股票中选出市值最大的前top_n只
+    # 对每个交易日，从有因子值的股票中选出市值排名前70%的股票
     try:
-        market_cap_mask = pd.read_pickle(f"{cache_dir}/market_cap_mask.pkl")
-        print("✅ 成功加载缓存的market_cap_mask")
+        market_cap_mask = pd.read_pickle(
+            f"{cache_dir}/market_cap_mask_pct{int(top_pct*100)}.pkl"
+        )
+        print(f"✅ 成功加载缓存的market_cap_mask (前{int(top_pct*100)}%)")
     except:
-        print("✅ 计算新的market_cap_mask...")
+        print(f"✅ 计算新的market_cap_mask (前{int(top_pct*100)}%)...")
 
         # 获取市值因子
         market_cap = execute_factor(
@@ -133,29 +60,41 @@ def filter_by_market_cap(raw_factor, cache_dir, top_n=1000):
 
         market_cap_mask_list = []
 
-        for date in raw_factor.index:
-            factor_row = raw_factor.loc[date]
+        for date in preprocessed_factor.index:
+            factor_row = preprocessed_factor.loc[date]
             market_cap_row = market_cap.loc[date]
 
-            mask = create_market_cap_mask(factor_row, market_cap_row, top_n)
+            mask = create_market_cap_mask(factor_row, market_cap_row, top_pct)
             market_cap_mask_list.append(mask)
 
         # 将所有mask合并成DataFrame
-        market_cap_mask = pd.DataFrame(market_cap_mask_list, index=raw_factor.index)
+        market_cap_mask = pd.DataFrame(
+            market_cap_mask_list, index=preprocessed_factor.index
+        )
 
         os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
-        market_cap_mask.to_pickle(f"{cache_dir}/market_cap_mask.pkl")
+        market_cap_mask.to_pickle(
+            f"{cache_dir}/market_cap_mask_pct{int(top_pct*100)}.pkl"
+        )
 
     # 应用市值过滤
-    factor = raw_factor.mask(~market_cap_mask)
+    factor = preprocessed_factor.mask(~market_cap_mask)
 
-    return factor
+    # 标准化处理
+    standardize_factor = standardize(factor)
+
+    return standardize_factor
 
 
-def create_market_cap_mask(factor_row, market_cap_row, top_n=1000):
+def create_market_cap_mask(factor_row, market_cap_row, top_pct=0.7):
     """
     对每一行（每个交易日）创建市值mask
-    从有因子值的股票中选出市值最大的前top_n只股票为True，其余为False
+    从有因子值的股票中选出市值排名前top_pct%的股票为True，其余为False
+
+    :param factor_row: 因子数据的一行（一个交易日）
+    :param market_cap_row: 市值数据的一行（一个交易日）
+    :param top_pct: 保留的市值排名百分比，默认0.7（前70%）
+    :return: 布尔mask，True表示保留该股票
     """
     # 找到有因子值的股票（非NaN）
     valid_factor_stocks = factor_row.dropna().index
@@ -171,8 +110,11 @@ def create_market_cap_mask(factor_row, market_cap_row, top_n=1000):
         # 如果没有有效的市值数据，返回全False
         return pd.Series(False, index=factor_row.index)
 
-    # 从有因子值且有市值数据的股票中，选出市值最大的前top_n只
-    top_stocks = valid_market_cap.nlargest(min(top_n, len(valid_market_cap))).index
+    # 计算需要保留的股票数量（向上取整确保至少保留1只）
+    n_stocks_to_keep = max(1, int(np.ceil(len(valid_market_cap) * top_pct)))
+
+    # 从有因子值且有市值数据的股票中，选出市值最大的前top_pct%
+    top_stocks = valid_market_cap.nlargest(n_stocks_to_keep).index
 
     # 创建mask：选中的股票为True，其余为False
     mask = pd.Series(False, index=factor_row.index)
@@ -183,7 +125,7 @@ def create_market_cap_mask(factor_row, market_cap_row, top_n=1000):
 
 def preprocess_raw(raw_factor, stock_universe, cache_dir):
 
-    print("过滤新股、ST、停牌、涨停...")
+    print("过滤新股、ST、停牌、涨停、完成标准化（暂未做行业市值中性化处理）...")
     stock_list = stock_universe.columns.tolist()
     date_list = stock_universe.index.tolist()
 
@@ -215,7 +157,10 @@ def preprocess_raw(raw_factor, stock_universe, cache_dir):
 
     factor = raw_factor.mask(~combo_mask)
 
-    return factor
+    # 标准化处理
+    standardize_factor = standardize(factor)
+
+    return standardize_factor
 
 
 # 动态券池
@@ -369,21 +314,20 @@ def get_limit_up_filter(stock_list, date_list):
 
 # 单因子检验
 def calculate_ic(
-    df,
-    cache_dir,
+    ic_df,
+    vwap_df,
     rebalance_days,
     Rank_IC=True,
     factor_name="",
 ):
     """
     计算因子IC
-    :param df: 因子数据 DataFrame
+    :param ic_df: 因子数据 DataFrame
     :param rebalance_days: 换手周期（天数），可以是单个数字或列表
     :param Rank_IC: 是否使用排名IC
     :return: IC结果和报告
     """
 
-    vwap_df = pd.read_pickle(f"{cache_dir}/vwap_df.pkl")
     post_vwap = vwap_df["post_vwap"].unstack("order_book_id")
 
     # 未来一段收益股票的累计收益率计算
@@ -391,11 +335,11 @@ def calculate_ic(
 
     # 计算IC
     if Rank_IC:
-        ic_values = df.corrwith(future_returns, axis=1, method="spearman").dropna(
+        ic_values = ic_df.corrwith(future_returns, axis=1, method="spearman").dropna(
             how="all"
         )
     else:
-        ic_values = df.corrwith(future_returns, axis=1, method="pearson").dropna(
+        ic_values = ic_df.corrwith(future_returns, axis=1, method="pearson").dropna(
             how="all"
         )
 

@@ -3,11 +3,11 @@ import os
 from factor_utils import get_price, get_vwap
 
 
-def get_vwap_data(factor_df, save_dir: str) -> pd.DataFrame:
+def get_vwap_data(factor_df, save_dir: str, top_pct=0.7) -> pd.DataFrame:
 
     try:
         vwap_df = pd.read_pickle(f"{save_dir}/vwap_df.pkl")
-        print("✅ 成功加载缓存的vwap_df")
+        print(f"✅ 成功加载缓存的vwap_df")
         return vwap_df
 
     except:
@@ -44,7 +44,7 @@ def get_vwap_data(factor_df, save_dir: str) -> pd.DataFrame:
 
         # 保存数据以备下次使用
         os.makedirs(save_dir, exist_ok=True)
-        vwap_df.to_pickle(f"{save_dir}/vwap_df.pkl")
+        vwap_df.to_pickle(f"{save_dir}/vwap_df_pct{int(top_pct*100)}.pkl")
 
         return vwap_df
 
